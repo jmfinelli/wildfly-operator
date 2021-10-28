@@ -541,9 +541,14 @@ spec:
                       enum:
                       - ACTIVE
                       - SCALING_DOWN_RECOVERY_INVESTIGATION
-                      - SCALING_DOWN_RECOVERY_DIRTY
+                      - SCALING_DOWN_RECOVERY_PROCESSING
+                      - SCALING_DOWN_RECOVERY_HEURISTICS
                       - SCALING_DOWN_CLEAN
                       type: string
+                    recoveryCounter:
+                      description: Counts recovery attempts when there are in-doubt txns.
+                      format: int32
+                      type: integer
                   required:
                   - name
                   - podIP

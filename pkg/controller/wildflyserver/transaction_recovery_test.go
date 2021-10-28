@@ -37,7 +37,7 @@ const (
 )
 
 var (
-	// variables to be setup and re-used in the method over the file
+	// Variables to be used in the testing methods 
 	assert *testifyAssert.Assertions
 	cl     client.Client
 	r      *ReconcileWildFlyServer
