@@ -400,6 +400,7 @@ func (r *ReconcileWildFlyServer) processTransactionRecoveryScaleDown(reqLogger l
 					reqLogger.Info("Pod Name", scaleDownPodName, "Message", message)
 					scaleDownPodsStates.Store(scaleDownPodName, wildflyv1alpha1.PodStateScalingDownRecoveryDirty)
 				} else if outcome == heuristic {
+					r.recorder.Event(w, corev1.EventTypeWarning, "WildFlyServerTransactionRecovery", message)
 					reqLogger.Info("Pod Name", scaleDownPodName, "Message", message)
 					scaleDownPodsStates.Store(scaleDownPodName, wildflyv1alpha1.PodStateScalingDownRecoveryHeuristic)
 				}
