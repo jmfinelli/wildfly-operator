@@ -83,7 +83,7 @@ func (r *ReconcileWildFlyServer) checkRecovery(reqLogger logr.Logger, scaleDownP
 			scaleDownPodRecoveryPort = queriedScaleDownPodRecoveryPort
 		}
 		if err != nil {
-			reqLogger.Error(err, "Error reading the transaction recovery port of the pod "+scaleDownPodName+". The default port will be used.")
+			reqLogger.Error(err, "Error reading the transaction recovery port of the pod "+scaleDownPodName, "The default port "+string(scaleDownPodRecoveryPort)+" will be used.")
 		}
 
 		// Save the recovery port into the annotations
@@ -397,6 +397,9 @@ func (r *ReconcileWildFlyServer) processTransactionRecoveryScaleDown(reqLogger l
 					// Recovery was processed with success, the pod is clean to go
 					scaleDownPodsStates.Store(scaleDownPodName, wildflyv1alpha1.PodStateScalingDownClean)
 				} else if outcome == recovery {
+					// Increases the recovery counter
+					wildflyServerSpecPodStatus := getWildflyServerPodStatusByName(w, scaleDownPodName)
+					wildflyServerSpecPodStatus.RecoveryCounter++
 					reqLogger.Info("Pod Name", scaleDownPodName, "Message", message)
 					scaleDownPodsStates.Store(scaleDownPodName, wildflyv1alpha1.PodStateScalingDownRecoveryDirty)
 				} else if outcome == heuristic {

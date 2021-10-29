@@ -116,8 +116,10 @@ type PodStatus struct {
 	Name  string `json:"name"`
 	PodIP string `json:"podIP"`
 	// Represent the state of the Pod, it is used especially during scale down.
-	// +kubebuilder:validation:Enum=ACTIVE;SCALING_DOWN_RECOVERY_INVESTIGATION;SCALING_DOWN_RECOVERY_DIRTY;SCALING_DOWN_CLEAN
+	// +kubebuilder:validation:
+	// Enum=ACTIVE;SCALING_DOWN_RECOVERY_INVESTIGATION;SCALING_DOWN_RECOVERY_PROCESSING;SCALING_DOWN_RECOVERY_HEURISTICSSCALING_DOWN_CLEAN
 	State string `json:"state"`
+	RecoveryCounter int32 `json:recoveryCounter`
 }
 
 // WildFlyServer is the Schema for the wildflyservers API
