@@ -1,4 +1,4 @@
-DOCKER_REPO ?= quay.io/wildfly/
+DOCKER_REPO ?= default-route-openshift-image-registry.apps-crc.testing/default/
 IMAGE ?= wildfly-operator
 TAG ?= latest
 PROG  := wildfly-operator
@@ -33,11 +33,11 @@ build: tidy unit-test
 
 ## image                 Create the Docker image of the operator
 image: build
-	docker build -t "${DOCKER_REPO}$(IMAGE):$(TAG)" . -f build/Dockerfile
+	podman build -t "${DOCKER_REPO}$(IMAGE):$(TAG)" . -f build/Dockerfile
 
 ## push                  Push Docker image to the Quay.io repository.
 push: image
-	docker push "${DOCKER_REPO}$(IMAGE):$(TAG)"
+	podman push "${DOCKER_REPO}$(IMAGE):$(TAG)" --tls-verify=false
 
 ## clean                 Remove all generated build files.
 clean:
@@ -65,7 +65,7 @@ test-e2e-local: setup
 	LOCAL_OPERATOR=true JBOSS_HOME=/wildfly JBOSS_BOOTABLE_DATA_DIR=/opt/jboss/container/wildfly-bootable-jar-data JBOSS_BOOTABLE_HOME=/opt/jboss/container/wildfly-bootable-jar-server OPERATOR_NAME=wildfly-operator ./operator-sdk test local ./test/e2e --verbose --debug  --operator-namespace default --up-local --local-operator-flags "--zap-devel --zap-level=5" --global-manifest ./deploy/crds/wildfly.org_wildflyservers_crd.yaml
 
 push-to-minikube-image-registry:
-	docker run -d -p 5000:5000 --restart=always --name image-registry registry || true
+	podman run -d -p 5000:5000 --restart=always --name image-registry registry || true
 	DOCKER_REPO="localhost:5000/" IMAGE="wildfly-operator" make push
 
 ## test-e2e-minikube     Run e2e tests with a containerized operator in Minikube
