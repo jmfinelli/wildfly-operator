@@ -38,8 +38,10 @@ type WildFlyServerSpec struct {
 	// SessionAffinity defines if connections from the same client ip are passed to the same WildFlyServer instance/pod each time (false if omitted)
 	SessionAffinity bool `json:"sessionAffinity,omitempty"`
 	// DisableHTTPRoute disables the creation a route to the HTTP port of the application service (false if omitted)
-	DisableHTTPRoute    bool                     `json:"disableHTTPRoute,omitempty"`
-	StandaloneConfigMap *StandaloneConfigMapSpec `json:"standaloneConfigMap,omitempty"`
+	DisableHTTPRoute bool `json:"disableHTTPRoute,omitempty"`
+	// DeactivateTransactionRecovery disables the process of recoverying transactions (false if omitted)
+	DeactivateTransactionRecovery bool                     `json:"deactivateTransactionRecovery,omitempty"`
+	StandaloneConfigMap           *StandaloneConfigMapSpec `json:"standaloneConfigMap,omitempty"`
 	// StorageSpec defines specific storage required for the server own data directory. If omitted, an EmptyDir is used (that will not
 	// persist data across pod restart).
 	Storage            *StorageSpec `json:"storage,omitempty"`
@@ -69,6 +71,61 @@ type WildFlyServerSpec struct {
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 	// SecurityContext defines the security capabilities required to run the application.
 	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
+	// LivenessProbe defines the periodic probe of container liveness. Container will be restarted if the probe fails.
+	LivenessProbe *ProbeSpec `json:"livenessProbe,omitempty"`
+	// ReadinessProbe defines the periodic probe of container service readiness. Container will be removed from service endpoints if the probe fails.
+	ReadinessProbe *ProbeSpec `json:"readinessProbe,omitempty"`
+	// StartupProbe indicates that the Pod has successfully initialized. If specified, no other probes are executed until this completes successfully.
+	// If this probe fails, the Pod will be restarted, just as if the livenessProbe failed. This can be used to provide different probe parameters at the beginning of a Pod's lifecycle,
+	// when it might take a long time to load data or warm a cache, than during steady-state operation.
+	StartupProbe *ProbeSpec `json:"startupProbe,omitempty"`
+}
+
+// ProbeSpec describes a health check to be performed against a container to determine whether it is alive or ready to receive traffic.
+// The Operator will configure the exec/httpGet fields if they are not explicitly defined in the probe.
+// +k8s:openapi-gen=true
+type ProbeSpec struct {
+	// The action taken to determine the health of a container
+	ProbeHandler `json:",inline,omitempty" protobuf:"bytes,1,opt,name=handler"`
+	// Number of seconds after the container has started before probes are initiated.
+	// It defaults to 60 seconds for liveness probe. It defaults to 10 seconds for readiness probe. It defaults to 0 seconds for startup probe.
+	// Minimum value is 0.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	InitialDelaySeconds int32 `json:"initialDelaySeconds,omitempty"`
+	// Number of seconds after which the probe times out.
+	// Defaults to 1 second. Minimum value is 1.
+	// More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
+	// How often (in seconds) to perform the probe.
+	// Default to 10 seconds. Minimum value is 1.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	PeriodSeconds int32 `json:"periodSeconds,omitempty"`
+	// Minimum consecutive successes for the probe to be considered successful after having failed.
+	// Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	SuccessThreshold int32 `json:"successThreshold,omitempty"`
+	// Minimum consecutive failures for the probe to be considered failed after having succeeded.
+	// Defaults to 3. Minimum value is 1.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	FailureThreshold int32 `json:"failureThreshold,omitempty"`
+}
+
+// ProbeHandler defines a specific action between Exec or HTTPGet that should be taken in a probe.
+// If Exec and HTTPGet handlers are both defined, the Operator will configure the Exec handler and will ignore the
+// HTTPGet one.
+type ProbeHandler struct {
+	// Exec specifies a command action to take.
+	// +optional
+	Exec *corev1.ExecAction `json:"exec,omitempty" protobuf:"bytes,1,opt,name=exec"`
+	// HTTPGet specifies the http request to perform.
+	// +optional
+	HTTPGet *corev1.HTTPGetAction `json:"httpGet,omitempty" protobuf:"bytes,2,opt,name=httpGet"`
 }
 
 // StandaloneConfigMapSpec defines the desired configMap configuration to obtain the standalone configuration for WildFlyServer
@@ -109,22 +166,20 @@ type WildFlyServerStatus struct {
 }
 
 const (
-	// PodStateActive represents PodStatus.State when pod is active to serve requests
-	// it's connected in the Service load balancer
+	// PodStateActive represents an active pod that is connected to the load balancer Service
+	// and that can serve requests
 	PodStateActive = "ACTIVE"
-	// PodStateScalingDownRecoveryInvestigation represents the PodStatus.State when pod is in state of scaling down
-	// and is to be verified if it's dirty and if recovery is needed
-	// as the pod is under recovery verification it can't be immediately removed
-	// and it needs to be wait until it's marked as clean to be removed
+	// PodStateScalingDownRecoveryInvestigation represents a pod that is under investigation
+	// to find out if there are transactions to be recovered. A pod in this state will be updated to one of
+	// the following states eventually
 	PodStateScalingDownRecoveryInvestigation = "SCALING_DOWN_RECOVERY_INVESTIGATION"
-	// PodStateScalingDownRecoveryDirty represents the PodStatus.State when the pod was marked as recovery is needed
-	// because there are some in-doubt transactions.
-	// The app server was restarted with the recovery properties to speed-up recovery nad it's needed to wait
-	// until all ind-doubt transactions are processed.
-	PodStateScalingDownRecoveryDirty = "SCALING_DOWN_RECOVERY_DIRTY"
-	// PodStateScalingDownClean represents the PodStatus.State when pod is not active to serve requests
-	// it's in state of scaling down and it's clean
-	// 'clean' means it's ready to be removed from the kubernetes cluster
+	// PodStateScalingDownRecoveryProcessing represents a pod that has transactions to be completed.
+	// The Operator will wait until all transactions are processed
+	PodStateScalingDownRecoveryProcessing = "SCALING_DOWN_RECOVERY_PROCESSING"
+	// PodStateScalingDownRecoveryHeuristic represents a pod that has heuristic transactions.
+	// The Operator will wait until all heuristic transactions are manually solved
+	PodStateScalingDownRecoveryHeuristic = "SCALING_DOWN_RECOVERY_HEURISTICS"
+	// PodStateScalingDownClean represents a pod that is ready to be scaled down
 	PodStateScalingDownClean = "SCALING_DOWN_CLEAN"
 )
 
@@ -134,8 +189,10 @@ type PodStatus struct {
 	Name  string `json:"name"`
 	PodIP string `json:"podIP"`
 	// Represent the state of the Pod, it is used especially during scale down.
-	// +kubebuilder:validation:Enum=ACTIVE;SCALING_DOWN_RECOVERY_INVESTIGATION;SCALING_DOWN_RECOVERY_DIRTY;SCALING_DOWN_CLEAN
+	// +kubebuilder:validation:Enum=ACTIVE;SCALING_DOWN_RECOVERY_INVESTIGATION;SCALING_DOWN_RECOVERY_PROCESSING;SCALING_DOWN_RECOVERY_HEURISTICS;SCALING_DOWN_CLEAN
 	State string `json:"state"`
+	// Counts the recovery attempts when there are in-doubt/heuristic transactions
+	RecoveryCounter int32 `json:"recoveryCounter,omitempty"`
 }
 
 // WildFlyServer is the Schema for the wildflyservers API
